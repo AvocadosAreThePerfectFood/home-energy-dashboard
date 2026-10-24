@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Energy Dashboard</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2129; --muted: #5b6472; --grid: #e3e6eb;
+    --border: #d9dde4; --accent: #0072b2; --banner-bg: #fff4d6; --banner-text: #5c4300;
+    --c-solar: #e69f00; --c-home: #0072b2; --c-import: #d55e00; --c-export: #009e73;
+    --c-charge: #56b4e9; --c-discharge: #cc79a7; --c-soc: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141a; --panel: #1a1f28; --text: #e8eaee; --muted: #a2abb8; --grid: #2b3240;
+      --border: #333b4a; --accent: #56b4e9; --banner-bg: #3a2f10; --banner-text: #f3d98a;
+      --c-solar: #f0b429; --c-home: #56b4e9; --c-import: #f08c4a; --c-export: #2ec4a0;
+      --c-charge: #7fc8f0; --c-discharge: #e39ac2; --c-soc: #a2abb8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.45; }
+  header, main, footer { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+  header { padding-top: 24px; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  h2 { margin: 0 0 4px; font-size: 1.1rem; }
+  .sub { margin: 4px 0 16px; color: var(--muted); }
+  .banner { background: var(--banner-bg); color: var(--banner-text); border-radius: 8px;
+            padding: 10px 14px; margin: 0 auto 16px; max-width: 968px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  button { font: inherit; color: var(--text); background: var(--panel); border: 0;
+           padding: 8px 14px; cursor: pointer; }
+  button + button { border-left: 1px solid var(--border); }
+  button.active { background: var(--accent); color: #fff; }
+  select { font: inherit; color: var(--text); background: var(--panel);
+           border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
+           margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .card .label { color: var(--muted); font-size: 0.85rem; }
+  .card .value { font-size: 1.35rem; font-weight: 600; margin-top: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+           padding: 14px; margin-bottom: 16px; }
+  .hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 10px; }
+  .chart { position: relative; height: 300px; }
+  footer { padding: 8px 16px 32px; color: var(--muted); font-size: 0.85rem; }
+  @media (max-width: 480px) { h1 { font-size: 1.35rem; } .chart { height: 260px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Home Energy Dashboard</h1>
+  <p class="sub" id="subtitle"></p>
+</header>
+<div class="banner" id="banner" hidden></div>
+<noscript><p style="padding:16px">This dashboard needs JavaScript to draw its charts.</p></noscript>
+<main>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Time range">
+      <button data-range="30">30 days</button>
+      <button data-range="90">90 days</button>
+      <button data-range="365">1 year</button>
+    </div>
+  </div>
+  <section class="cards" id="cards" aria-label="Summary for the selected range"></section>
+
+  <section class="panel">
+    <h2>Daily energy</h2>
+    <p class="hint" id="dailyHint">Energy per day. Gaps are times the system reported no data.</p>
+    <div class="chart"><canvas id="dailyChart" role="img" aria-label="Daily solar, home use, and grid energy"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <h2>Battery</h2>
+    <p class="hint">Energy put into the battery and taken out of it.</p>
+    <div class="chart"><canvas id="batteryChart" role="img" aria-label="Battery energy charged and used per day"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <h2>A typical day, by hour</h2>
+    <p class="hint">Average for each hour of the day, with the battery's charge level on the right.</p>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Season">
+        <button data-season="warm">Jun-Sep</button>
+        <button data-season="cool">Oct-May</button>
+      </div>
+    </div>
+    <div class="chart"><canvas id="profileChart" role="img" aria-label="Typical day by hour"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <h2>Recent days, hour by hour</h2>
+    <p class="hint">Pick a day. Recent days are shown with a delay.</p>
+    <div class="controls"><select id="detailSelect" aria-label="Day"></select></div>
+    <div class="chart"><canvas id="detailChart" role="img" aria-label="Hourly solar, home use, and battery level for one day"></canvas></div>
+  </section>
+</main>
+<footer>
+  <p id="footnote"></p>
+  <p>Energy readings come from the home's own meters. Hours are local clock time. No cost figures are shown.</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="site-data/data.js"></script>
+<script>
+(function () {
+  const D = window.DASHBOARD_DATA;
+  if (!D || !window.Chart) {
+    document.getElementById("subtitle").textContent = "Could not load the data or the chart library.";
+    return;
+  }
+  const root = document.documentElement;
+  const css = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+  const fmt = (n, d = 0) => n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+  const hourLabel = (h) => (h % 12 === 0 ? 12 : h % 12) + (h < 12 ? " am" : " pm");
+  const state = { range: 90, season: "warm", day: null };
+  const charts = {};
+  const days = D.daily;
+
+  document.getElementById("subtitle").textContent = "Data through " + D.meta.data_through;
+  if (D.meta.is_sample) {
+    const banner = document.getElementById("banner");
+    banner.textContent = "This page shows invented sample data for a fictional home.";
+    banner.hidden = false;
+  }
+  document.getElementById("footnote").textContent =
+    "Data through " + D.meta.data_through + ". Recent days appear with a delay.";
+
+  const select = document.getElementById("detailSelect");
+  Object.keys(D.detail).sort().reverse().forEach((date) => {
+    const option = document.createElement("option");
+    option.value = date;
+    option.textContent = date;
+    select.appendChild(option);
+  });
+  state.day = select.value;
+  select.addEventListener("change", () => { state.day = select.value; renderDetail(); });
+
+  document.querySelectorAll("[data-range]").forEach((b) =>
+    b.addEventListener("click", () => { state.range = +b.dataset.range; renderAll(); }));
+  document.querySelectorAll("[data-season]").forEach((b) =>
+    b.addEventListener("click", () => { state.season = b.dataset.season; renderProfile(); markActive(); }));
+
+  function markActive() {
+    document.querySelectorAll("[data-range]").forEach((b) => {
+      const on = +b.dataset.range === state.range;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on);
+    });
+    document.querySelectorAll("[data-season]").forEach((b) => {
+      const on = b.dataset.season === state.season;
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-pressed", on);
+    });
+  }
+
+  function aggregate(list, size) {
+    const keys = ["solar", "home", "grid_import", "grid_export", "charge", "discharge"];
+    if (size === 1) {
+      return list.map((d) => Object.assign({ label: d.date, offline: !!d.offline }, d));
+    }
+    const out = [];
+    for (let i = 0; i < list.length; i += size) {
+      const chunk = list.slice(i, i + size);
+      const live = chunk.filter((d) => !d.offline);
+      const row = { label: chunk[0].date, offline: live.length === 0 };
+      keys.forEach((k) => {
+        row[k] = live.length ? live.reduce((s, d) => s + d[k], 0) / live.length : null;
+      });
+      out.push(row);
+    }
+    return out;
+  }
+
+  const line = (label, data, colorVar, extra) =>
+    Object.assign({ label, data, borderColor: css(colorVar), backgroundColor: css(colorVar),
+                    borderWidth: 2, pointRadius: 0, tension: 0.25, spanGaps: false }, extra || {});
+  const bar = (label, data, colorVar) => ({ label, data, backgroundColor: css(colorVar) });
+  const options = (yTitle, extraScales) => ({
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: { position: "bottom" } },
+    scales: Object.assign({
+      x: { ticks: { maxTicksLimit: 8, autoSkip: true }, grid: { display: false } },
+      y: { beginAtZero: true, title: { display: true, text: yTitle } }
+    }, extraScales || {})
+  });
+  const levelAxis = { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false },
+                      title: { display: true, text: "battery % full" } };
+  function draw(id, config) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(document.getElementById(id), config);
+  }
+
+  function renderCards() {
+    const live = days.slice(-state.range).filter((d) => !d.offline);
+    const sum = (k) => live.reduce((s, d) => s + d[k], 0);
+    const home = sum("home"), imported = sum("grid_import");
+    const cards = [
+      ["Solar produced", fmt(sum("solar")) + " kWh"],
+      ["Home used", fmt(home) + " kWh"],
+      ["Covered without the grid", home ? fmt(Math.max(0, 100 * (1 - imported / home))) + "%" : "n/a"],
+      ["Sent to the grid", fmt(sum("grid_export")) + " kWh"],
+      ["Battery output", live.length ? fmt(sum("discharge") / live.length, 1) + " kWh/day" : "n/a"],
+      ["Days with data", live.length + " of " + Math.min(state.range, days.length)]
+    ];
+    const box = document.getElementById("cards");
+    box.textContent = "";
+    cards.forEach(([label, value]) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      const l = document.createElement("div"); l.className = "label"; l.textContent = label;
+      const v = document.createElement("div"); v.className = "value"; v.textContent = value;
+      card.append(l, v);
+      box.appendChild(card);
+    });
+  }
+
+  function renderDaily() {
+    const weekly = state.range > 120;
+    const rows = aggregate(days.slice(-state.range), weekly ? 7 : 1);
+    const col = (k) => rows.map((r) => (r.offline ? null : r[k]));
+    document.getElementById("dailyHint").textContent = weekly
+      ? "Average energy per day, by week. Gaps are times the system reported no data."
+      : "Energy per day. Gaps are times the system reported no data.";
+    draw("dailyChart", {
+      type: "line",
+      data: { labels: rows.map((r) => r.label), datasets: [
+        line("Solar", col("solar"), "--c-solar"),
+        line("Home use", col("home"), "--c-home"),
+        line("From grid", col("grid_import"), "--c-import", { borderDash: [6, 4] }),
+        line("To grid", col("grid_export"), "--c-export", { borderDash: [2, 3] })
+      ] },
+      options: options("kWh per day")
+    });
+    const b = rows;
+    draw("batteryChart", {
+      type: "bar",
+      data: { labels: b.map((r) => r.label), datasets: [
+        bar("Charged", b.map((r) => (r.offline ? null : r.charge)), "--c-charge"),
+        bar("Used from battery", b.map((r) => (r.offline ? null : r.discharge)), "--c-discharge")
+      ] },
+      options: options("kWh per day")
+    });
+  }
+
+  function hourlyConfig(p, yTitle) {
+    const labels = Array.from({ length: 24 }, (_, h) => hourLabel(h));
+    return {
+      type: "line",
+      data: { labels, datasets: [
+        line("Solar", p.solar, "--c-solar"),
+        line("Home use", p.home, "--c-home"),
+        line("From grid", p.grid_import, "--c-import", { borderDash: [6, 4] }),
+        line("To grid", p.grid_export, "--c-export", { borderDash: [2, 3] }),
+        line("Battery level", p.soc, "--c-soc", { yAxisID: "y2", borderWidth: 1.5 })
+      ] },
+      options: options(yTitle, { y2: levelAxis })
+    };
+  }
+
+  function renderProfile() { draw("profileChart", hourlyConfig(D.profile[state.season], "kW (average)")); }
+  function renderDetail() { draw("detailChart", hourlyConfig(D.detail[state.day], "kWh per hour")); }
+
+  function renderAll() {
+    Chart.defaults.color = css("--muted");
+    Chart.defaults.borderColor = css("--grid");
+    markActive();
+    renderCards();
+    renderDaily();
+    renderProfile();
+    renderDetail();
+  }
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+  renderAll();
+})();
+</script>
+</body>
+</html>
