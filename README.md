@@ -42,19 +42,11 @@ On Windows or Linux, open `docs/index.html` in your browser instead of using the
     docs/site-data/data.js     the data the page reads (sample data)
     tools/make_sample_data.py  generates the sample data
 
-## Status and roadmap
+## About this project
 
-**Done**
-- Dashboard front end
-- Sample-data generator
+This repository holds the dashboard page and the sample-data generator, which are meant to be read, run, and reused.
 
-**In progress**
-- Data collection from the Enphase Enlighten API (free developer tier) and from a utility's Green Button CSV download
-- Time-of-use rate-period labeling
-- Rule-based alerts for system performance
-- A daily plain-English summary written with a free-tier AI model
-
-The collection and analysis code will be published as generic tools. Credentials, rate details, and personal data stay in private configuration and are never committed here.
+I also use a separate, private project to collect data from my own system, check it against plain-language rules, and email a short daily summary. It works on personal usage data, so it is not published here.
 
 ## Notes
 
